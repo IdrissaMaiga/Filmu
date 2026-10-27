@@ -1,0 +1,5 @@
+-keepattributes *Annotation*, InnerClasses
+-keep,includedescriptorclasses class com.iditechs.filmu.**$$serializer { *; }
+-keepclassmembers class com.iditechs.filmu.** { *** Companion; }
+-keepclasseswithmembers class com.iditechs.filmu.** { kotlinx.serialization.KSerializer serializer(...); }
+-dontwarn org.slf4j.**

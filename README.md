@@ -4,9 +4,9 @@ Android IPTV player app built with Kotlin Multiplatform. Connect to any Xtream C
 
 ## Screenshots
 
-| Login | Home |
-|-------|------|
-| ![Login](screenshots/login.png) | ![Home](screenshots/home.png) |
+| Login | Home | Live TV |
+|-------|------|---------|
+| ![Login](screenshots/login.png) | ![Home](screenshots/home.png) | ![Live TV](screenshots/livetv.png) |
 
 ## Features
 

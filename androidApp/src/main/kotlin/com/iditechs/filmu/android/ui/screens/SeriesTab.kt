@@ -6,13 +6,21 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -26,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.iditechs.filmu.android.ui.AppViewModel
 import com.iditechs.filmu.android.ui.components.ContentCard
+import kotlinx.coroutines.delay
 
 @Composable
 fun SeriesTab(
@@ -34,35 +43,64 @@ fun SeriesTab(
     modifier: Modifier = Modifier,
 ) {
     var selectedCategoryId by rememberSaveable { mutableStateOf<String?>(null) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
     val categories by viewModel.seriesCategories.collectAsState()
     val series by viewModel.seriesList.collectAsState()
+    val searchResults by viewModel.seriesSearchResults.collectAsState()
+    val isSearching by viewModel.isSearching.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
 
+    val isSearchMode = searchQuery.length >= 2
+    val displayList = if (isSearchMode) searchResults else series
+
     LaunchedEffect(Unit) {
-        viewModel.loadSeriesCategories()
-        viewModel.loadSeries()
+        if (categories.isEmpty()) viewModel.loadSeriesCategories()
     }
 
-    LaunchedEffect(selectedCategoryId) {
-        viewModel.loadSeries(selectedCategoryId)
+    LaunchedEffect(selectedCategoryId, categories) {
+        if (!isSearchMode) {
+            val catId = selectedCategoryId ?: categories.firstOrNull()?.category_id
+            if (catId != null) viewModel.loadSeries(catId)
+        }
+    }
+
+    LaunchedEffect(searchQuery) {
+        if (searchQuery.length >= 2) {
+            delay(800)
+            viewModel.searchSeries(searchQuery)
+        } else {
+            viewModel.clearSearch()
+        }
     }
 
     Column(modifier = modifier) {
-        if (categories.isNotEmpty()) {
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            placeholder = { Text("Rechercher une série...") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            singleLine = true,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                cursorColor = MaterialTheme.colorScheme.primary,
+                focusedLeadingIconColor = MaterialTheme.colorScheme.primary,
+                unfocusedLeadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+        )
+
+        if (!isSearchMode && categories.isNotEmpty()) {
             LazyRow(
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                item {
-                    FilterChip(
-                        selected = selectedCategoryId == null,
-                        onClick = { selectedCategoryId = null },
-                        label = { Text("Tout") },
-                    )
-                }
                 items(categories) { cat ->
                     FilterChip(
-                        selected = selectedCategoryId == cat.category_id,
+                        selected = selectedCategoryId == cat.category_id ||
+                                (selectedCategoryId == null && cat == categories.first()),
                         onClick = { selectedCategoryId = cat.category_id },
                         label = { Text(cat.category_name ?: "") },
                     )
@@ -70,26 +108,32 @@ fun SeriesTab(
             }
         }
 
-        Box(modifier = Modifier.fillMaxSize()) {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 120.dp),
-                contentPadding = PaddingValues(8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                items(series, key = { it.series_id }) { item ->
-                    ContentCard(
-                        imageUrl = item.cover,
-                        title = item.name ?: "",
-                        rating = item.rating_5based,
-                        modifier = Modifier.clickable { onSeriesClick(item.series_id) },
-                    )
-                }
+        if (isSearchMode && !isSearching && searchResults.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("Aucun résultat", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+        } else {
+            Box(modifier = Modifier.fillMaxSize()) {
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(minSize = 120.dp),
+                    contentPadding = PaddingValues(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    items(displayList, key = { it.series_id }) { item ->
+                        ContentCard(
+                            imageUrl = item.cover,
+                            title = item.name ?: "",
+                            rating = item.rating_5based,
+                            modifier = Modifier.clickable { onSeriesClick(item.series_id) },
+                        )
+                    }
+                }
 
-            if (isLoading && series.isEmpty()) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                if ((isLoading && !isSearchMode && series.isEmpty()) || (isSearching)) {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                }
             }
         }
     }

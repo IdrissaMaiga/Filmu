@@ -56,6 +56,8 @@ fun LoginScreen(
         }
     }
 
+
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
@@ -68,9 +70,11 @@ fun LoginScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = "Filmu",
+                text = "FILMU",
                 style = MaterialTheme.typography.displayMedium,
-                color = MaterialTheme.colorScheme.primary,
+                color = MaterialTheme.colorScheme.secondary,
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
             )
 
             Text(

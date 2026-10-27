@@ -14,10 +14,14 @@ import com.iditechs.filmu.ServerCredentials
 import com.iditechs.filmu.ServerInfo
 import com.iditechs.filmu.VodStream
 import com.iditechs.filmu.android.FilmuApplication
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -174,17 +178,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 _liveCategories.value = liveCats
                 _vodCategories.value = vodCats
                 _seriesCategories.value = serCats
-
-                val rawLive = c.getLiveStreams()
-                val rawVod = c.getVodStreams()
-                val rawSeries = c.getSeries()
-                _liveStreams.value = rawLive
-                _vodStreams.value = rawVod
-                _seriesList.value = rawSeries
-
-                _filteredMovies.value = ContentFilter.filterMovies(rawVod, vodCats, excludeAdult = _excludeAdult.value)
-                _filteredSeries.value = ContentFilter.filterSeries(rawSeries, serCats)
-                _filteredChannels.value = ContentFilter.filterChannels(rawLive, liveCats)
             } catch (e: Exception) {
                 _error.value = e.message
             } finally {
@@ -232,10 +225,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             _isLoading.value = true
             try {
                 val cats = _liveCategories.value.ifEmpty { c.getLiveCategories().also { _liveCategories.value = it } }
-                val streams = c.getLiveStreams(categoryId)
+                val streams = withContext(Dispatchers.IO) { c.getLiveStreams(categoryId) }
                 _liveStreams.value = streams
-                if (categoryId == null) {
-                    _filteredChannels.value = ContentFilter.filterChannels(streams, cats)
+                _filteredChannels.value = withContext(Dispatchers.Default) {
+                    ContentFilter.filterChannels(streams, cats)
                 }
             } catch (e: Exception) {
                 _error.value = e.message
@@ -251,10 +244,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             _isLoading.value = true
             try {
                 val cats = _vodCategories.value.ifEmpty { c.getVodCategories().also { _vodCategories.value = it } }
-                val streams = c.getVodStreams(categoryId)
+                val streams = withContext(Dispatchers.IO) { c.getVodStreams(categoryId) }
                 _vodStreams.value = streams
-                if (categoryId == null) {
-                    _filteredMovies.value = ContentFilter.filterMovies(streams, cats)
+                _filteredMovies.value = withContext(Dispatchers.Default) {
+                    ContentFilter.filterMovies(streams, cats, excludeAdult = _excludeAdult.value)
                 }
             } catch (e: Exception) {
                 _error.value = e.message
@@ -270,10 +263,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             _isLoading.value = true
             try {
                 val cats = _seriesCategories.value.ifEmpty { c.getSeriesCategories().also { _seriesCategories.value = it } }
-                val series = c.getSeries(categoryId)
+                val series = withContext(Dispatchers.IO) { c.getSeries(categoryId) }
                 _seriesList.value = series
-                if (categoryId == null) {
-                    _filteredSeries.value = ContentFilter.filterSeries(series, cats)
+                _filteredSeries.value = withContext(Dispatchers.Default) {
+                    ContentFilter.filterSeries(series, cats)
                 }
             } catch (e: Exception) {
                 _error.value = e.message
@@ -307,22 +300,105 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun getVodStreamUrl(streamId: Int, extension: String): String? = client?.getVodStreamUrl(streamId, extension)
     fun getSeriesStreamUrl(episodeId: String, extension: String): String? = client?.getSeriesStreamUrl(episodeId, extension)
 
-    fun search(query: String): SearchResults {
-        val q = query.lowercase()
-        return SearchResults(
-            movies = _filteredMovies.value.filter { it.name.lowercase().contains(q) },
-            series = _filteredSeries.value.filter { it.name.lowercase().contains(q) },
-            channels = _filteredChannels.value.filter { it.name.lowercase().contains(q) },
-        )
+    private val _vodSearchResults = MutableStateFlow<List<VodStream>>(emptyList())
+    val vodSearchResults: StateFlow<List<VodStream>> = _vodSearchResults.asStateFlow()
+
+    private val _seriesSearchResults = MutableStateFlow<List<SeriesItem>>(emptyList())
+    val seriesSearchResults: StateFlow<List<SeriesItem>> = _seriesSearchResults.asStateFlow()
+
+    private val _liveSearchResults = MutableStateFlow<List<LiveStream>>(emptyList())
+    val liveSearchResults: StateFlow<List<LiveStream>> = _liveSearchResults.asStateFlow()
+
+    private val _isSearching = MutableStateFlow(false)
+    val isSearching: StateFlow<Boolean> = _isSearching.asStateFlow()
+
+    private var searchJob: Job? = null
+
+    fun searchVod(query: String) {
+        val q = query.trim()
+        if (q.length < 2) { _vodSearchResults.value = emptyList(); return }
+        val c = client ?: return
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            _isSearching.value = true
+            try {
+                val ql = q.lowercase()
+                val cats = _vodCategories.value.ifEmpty { c.getVodCategories().also { _vodCategories.value = it } }
+                val results = mutableListOf<VodStream>()
+                withTimeoutOrNull(15_000L) {
+                    withContext(Dispatchers.IO) {
+                        for (cat in cats) {
+                            if (results.size >= 50) break
+                            val streams = c.getVodStreams(cat.category_id)
+                            results.addAll(streams.filter { (it.name ?: "").lowercase().contains(ql) })
+                        }
+                    }
+                }
+                _vodSearchResults.value = results.take(50)
+            } catch (_: Exception) { }
+            finally { _isSearching.value = false }
+        }
+    }
+
+    fun searchSeries(query: String) {
+        val q = query.trim()
+        if (q.length < 2) { _seriesSearchResults.value = emptyList(); return }
+        val c = client ?: return
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            _isSearching.value = true
+            try {
+                val ql = q.lowercase()
+                val cats = _seriesCategories.value.ifEmpty { c.getSeriesCategories().also { _seriesCategories.value = it } }
+                val results = mutableListOf<SeriesItem>()
+                withTimeoutOrNull(15_000L) {
+                    withContext(Dispatchers.IO) {
+                        for (cat in cats) {
+                            if (results.size >= 50) break
+                            val items = c.getSeries(cat.category_id)
+                            results.addAll(items.filter { (it.name ?: "").lowercase().contains(ql) })
+                        }
+                    }
+                }
+                _seriesSearchResults.value = results.take(50)
+            } catch (_: Exception) { }
+            finally { _isSearching.value = false }
+        }
+    }
+
+    fun searchLive(query: String) {
+        val q = query.trim()
+        if (q.length < 2) { _liveSearchResults.value = emptyList(); return }
+        val c = client ?: return
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            _isSearching.value = true
+            try {
+                val ql = q.lowercase()
+                val cats = _liveCategories.value.ifEmpty { c.getLiveCategories().also { _liveCategories.value = it } }
+                val results = mutableListOf<LiveStream>()
+                withTimeoutOrNull(15_000L) {
+                    withContext(Dispatchers.IO) {
+                        for (cat in cats) {
+                            if (results.size >= 50) break
+                            val streams = c.getLiveStreams(cat.category_id)
+                            results.addAll(streams.filter { (it.name ?: "").lowercase().contains(ql) })
+                        }
+                    }
+                }
+                _liveSearchResults.value = results.take(50)
+            } catch (_: Exception) { }
+            finally { _isSearching.value = false }
+        }
+    }
+
+    fun clearSearch() {
+        _vodSearchResults.value = emptyList()
+        _seriesSearchResults.value = emptyList()
+        _liveSearchResults.value = emptyList()
     }
 
     fun clearError() {
         _error.value = null
     }
 }
-
-data class SearchResults(
-    val movies: List<ContentFilter.FilteredMovie> = emptyList(),
-    val series: List<ContentFilter.FilteredSeries> = emptyList(),
-    val channels: List<ContentFilter.FilteredChannel> = emptyList(),
-)

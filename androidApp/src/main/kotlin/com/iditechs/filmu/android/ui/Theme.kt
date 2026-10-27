@@ -8,19 +8,19 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 
 private val FilmuColors = darkColorScheme(
-    primary = Color(0xFFE50914),
+    primary = Color(0xFF3AACF0),
     onPrimary = Color.White,
-    primaryContainer = Color(0xFF8B0000),
+    primaryContainer = Color(0xFF1A5276),
     onPrimaryContainer = Color.White,
-    secondary = Color(0xFFB0B0B0),
+    secondary = Color(0xFFE8C547),
     onSecondary = Color.Black,
-    background = Color(0xFF0A0A0A),
+    background = Color(0xFF0A1628),
     onBackground = Color.White,
-    surface = Color(0xFF141414),
+    surface = Color(0xFF0F1E36),
     onSurface = Color.White,
-    surfaceVariant = Color(0xFF1F1F1F),
-    onSurfaceVariant = Color(0xFFB0B0B0),
-    outline = Color(0xFF333333),
+    surfaceVariant = Color(0xFF162A4A),
+    onSurfaceVariant = Color(0xFFB0C4DE),
+    outline = Color(0xFF2A4A6B),
     error = Color(0xFFCF6679),
     onError = Color.Black,
 )

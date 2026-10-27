@@ -54,6 +54,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _seriesList = MutableStateFlow<List<SeriesItem>>(emptyList())
     val seriesList: StateFlow<List<SeriesItem>> = _seriesList.asStateFlow()
 
+    private val _excludeAdult = MutableStateFlow(true)
+    val excludeAdult: StateFlow<Boolean> = _excludeAdult.asStateFlow()
+
     private val _filteredMovies = MutableStateFlow<List<ContentFilter.FilteredMovie>>(emptyList())
     val filteredMovies: StateFlow<List<ContentFilter.FilteredMovie>> = _filteredMovies.asStateFlow()
 
@@ -141,6 +144,25 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun toggleAdultFilter() {
+        _excludeAdult.value = !_excludeAdult.value
+        refilter()
+    }
+
+    private fun refilter() {
+        val vodCats = _vodCategories.value
+        val serCats = _seriesCategories.value
+        val liveCats = _liveCategories.value
+        val rawVod = _vodStreams.value
+        val rawSeries = _seriesList.value
+        val rawLive = _liveStreams.value
+        if (rawVod.isEmpty() && rawSeries.isEmpty() && rawLive.isEmpty()) return
+
+        _filteredMovies.value = ContentFilter.filterMovies(rawVod, vodCats, excludeAdult = _excludeAdult.value)
+        _filteredSeries.value = ContentFilter.filterSeries(rawSeries, serCats)
+        _filteredChannels.value = ContentFilter.filterChannels(rawLive, liveCats)
+    }
+
     fun loadAllContent() {
         val c = client ?: return
         viewModelScope.launch {
@@ -160,7 +182,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 _vodStreams.value = rawVod
                 _seriesList.value = rawSeries
 
-                _filteredMovies.value = ContentFilter.filterMovies(rawVod, vodCats)
+                _filteredMovies.value = ContentFilter.filterMovies(rawVod, vodCats, excludeAdult = _excludeAdult.value)
                 _filteredSeries.value = ContentFilter.filterSeries(rawSeries, serCats)
                 _filteredChannels.value = ContentFilter.filterChannels(rawLive, liveCats)
             } catch (e: Exception) {

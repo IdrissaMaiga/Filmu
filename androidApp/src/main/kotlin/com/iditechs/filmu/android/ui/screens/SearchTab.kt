@@ -67,7 +67,7 @@ fun SearchTab(
         )
 
         Box(modifier = Modifier.fillMaxSize()) {
-            val hasResults = results.movies.isNotEmpty() || results.series.isNotEmpty() || results.live.isNotEmpty()
+            val hasResults = results.movies.isNotEmpty() || results.series.isNotEmpty() || results.channels.isNotEmpty()
 
             if (!hasResults && query.length >= 2) {
                 Text(
@@ -93,13 +93,13 @@ fun SearchTab(
                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
                         )
                     }
-                    items(results.movies, key = { "vod_${it.stream_id}" }) { movie ->
+                    items(results.movies, key = { "vod_${it.streamIds.first()}" }) { movie ->
                         ContentCard(
-                            imageUrl = movie.stream_icon,
-                            title = movie.name ?: "",
-                            rating = movie.rating_5based,
+                            imageUrl = movie.imagePath,
+                            title = movie.name,
+                            rating = movie.rating,
                             modifier = Modifier.clickable {
-                                onMovieClick(movie.stream_id, movie.container_extension ?: "mp4")
+                                onMovieClick(movie.streamIds.first(), movie.extensions.firstOrNull() ?: "mp4")
                             },
                         )
                     }
@@ -113,38 +113,38 @@ fun SearchTab(
                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
                         )
                     }
-                    items(results.series, key = { "ser_${it.series_id}" }) { item ->
+                    items(results.series, key = { "ser_${it.seriesIds.first()}" }) { item ->
                         ContentCard(
                             imageUrl = item.cover,
-                            title = item.name ?: "",
-                            rating = item.rating_5based,
-                            modifier = Modifier.clickable { onSeriesClick(item.series_id) },
+                            title = item.name,
+                            rating = item.rating,
+                            modifier = Modifier.clickable { onSeriesClick(item.seriesIds.first()) },
                         )
                     }
                 }
 
-                if (results.live.isNotEmpty()) {
+                if (results.channels.isNotEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Text(
-                            text = "Chaînes (${results.live.size})",
+                            text = "Chaînes (${results.channels.size})",
                             style = MaterialTheme.typography.titleMedium,
                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
                         )
                     }
-                    items(results.live, key = { "live_${it.stream_id}" }) { stream ->
+                    items(results.channels, key = { "live_${it.streamIds.first()}" }) { channel ->
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    val url = viewModel.getLiveStreamUrl(stream.stream_id)
-                                    if (url != null) onPlayLive(url, stream.name ?: "Live")
+                                    val url = viewModel.getLiveStreamUrl(channel.streamIds.first())
+                                    if (url != null) onPlayLive(url, channel.name)
                                 },
                         ) {
                             Row(
                                 modifier = Modifier.padding(8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
-                                val icon = stream.stream_icon
+                                val icon = channel.icon
                                 if (!icon.isNullOrBlank()) {
                                     AsyncImage(
                                         model = icon,
@@ -157,7 +157,7 @@ fun SearchTab(
                                     Spacer(modifier = Modifier.width(8.dp))
                                 }
                                 Text(
-                                    text = stream.name ?: "",
+                                    text = channel.name,
                                     style = MaterialTheme.typography.bodyMedium,
                                     modifier = Modifier.weight(1f),
                                 )

@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.iditechs.filmu.Category
+import com.iditechs.filmu.ContentFilter
 import com.iditechs.filmu.CredentialStorage
 import com.iditechs.filmu.FilmuClient
 import com.iditechs.filmu.LiveStream
@@ -52,6 +53,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _seriesList = MutableStateFlow<List<SeriesItem>>(emptyList())
     val seriesList: StateFlow<List<SeriesItem>> = _seriesList.asStateFlow()
+
+    private val _filteredMovies = MutableStateFlow<List<ContentFilter.FilteredMovie>>(emptyList())
+    val filteredMovies: StateFlow<List<ContentFilter.FilteredMovie>> = _filteredMovies.asStateFlow()
+
+    private val _filteredSeries = MutableStateFlow<List<ContentFilter.FilteredSeries>>(emptyList())
+    val filteredSeries: StateFlow<List<ContentFilter.FilteredSeries>> = _filteredSeries.asStateFlow()
+
+    private val _filteredChannels = MutableStateFlow<List<ContentFilter.FilteredChannel>>(emptyList())
+    val filteredChannels: StateFlow<List<ContentFilter.FilteredChannel>> = _filteredChannels.asStateFlow()
 
     val client: FilmuClient? get() = app.client
 
@@ -124,7 +134,40 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             _liveStreams.value = emptyList()
             _vodStreams.value = emptyList()
             _seriesList.value = emptyList()
+            _filteredMovies.value = emptyList()
+            _filteredSeries.value = emptyList()
+            _filteredChannels.value = emptyList()
             onDone()
+        }
+    }
+
+    fun loadAllContent() {
+        val c = client ?: return
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val liveCats = c.getLiveCategories()
+                val vodCats = c.getVodCategories()
+                val serCats = c.getSeriesCategories()
+                _liveCategories.value = liveCats
+                _vodCategories.value = vodCats
+                _seriesCategories.value = serCats
+
+                val rawLive = c.getLiveStreams()
+                val rawVod = c.getVodStreams()
+                val rawSeries = c.getSeries()
+                _liveStreams.value = rawLive
+                _vodStreams.value = rawVod
+                _seriesList.value = rawSeries
+
+                _filteredMovies.value = ContentFilter.filterMovies(rawVod, vodCats)
+                _filteredSeries.value = ContentFilter.filterSeries(rawSeries, serCats)
+                _filteredChannels.value = ContentFilter.filterChannels(rawLive, liveCats)
+            } catch (e: Exception) {
+                _error.value = e.message
+            } finally {
+                _isLoading.value = false
+            }
         }
     }
 
@@ -166,7 +209,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                _liveStreams.value = c.getLiveStreams(categoryId)
+                val cats = _liveCategories.value.ifEmpty { c.getLiveCategories().also { _liveCategories.value = it } }
+                val streams = c.getLiveStreams(categoryId)
+                _liveStreams.value = streams
+                if (categoryId == null) {
+                    _filteredChannels.value = ContentFilter.filterChannels(streams, cats)
+                }
             } catch (e: Exception) {
                 _error.value = e.message
             } finally {
@@ -180,7 +228,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                _vodStreams.value = c.getVodStreams(categoryId)
+                val cats = _vodCategories.value.ifEmpty { c.getVodCategories().also { _vodCategories.value = it } }
+                val streams = c.getVodStreams(categoryId)
+                _vodStreams.value = streams
+                if (categoryId == null) {
+                    _filteredMovies.value = ContentFilter.filterMovies(streams, cats)
+                }
             } catch (e: Exception) {
                 _error.value = e.message
             } finally {
@@ -194,7 +247,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                _seriesList.value = c.getSeries(categoryId)
+                val cats = _seriesCategories.value.ifEmpty { c.getSeriesCategories().also { _seriesCategories.value = it } }
+                val series = c.getSeries(categoryId)
+                _seriesList.value = series
+                if (categoryId == null) {
+                    _filteredSeries.value = ContentFilter.filterSeries(series, cats)
+                }
             } catch (e: Exception) {
                 _error.value = e.message
             } finally {
@@ -230,9 +288,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun search(query: String): SearchResults {
         val q = query.lowercase()
         return SearchResults(
-            movies = _vodStreams.value.filter { it.name?.lowercase()?.contains(q) == true },
-            series = _seriesList.value.filter { it.name?.lowercase()?.contains(q) == true },
-            live = _liveStreams.value.filter { it.name?.lowercase()?.contains(q) == true },
+            movies = _filteredMovies.value.filter { it.name.lowercase().contains(q) },
+            series = _filteredSeries.value.filter { it.name.lowercase().contains(q) },
+            channels = _filteredChannels.value.filter { it.name.lowercase().contains(q) },
         )
     }
 
@@ -242,7 +300,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 }
 
 data class SearchResults(
-    val movies: List<VodStream> = emptyList(),
-    val series: List<SeriesItem> = emptyList(),
-    val live: List<LiveStream> = emptyList(),
+    val movies: List<ContentFilter.FilteredMovie> = emptyList(),
+    val series: List<ContentFilter.FilteredSeries> = emptyList(),
+    val channels: List<ContentFilter.FilteredChannel> = emptyList(),
 )
